@@ -1,24 +1,4 @@
-# README
+timestacker
+===
 
-This README would normally document whatever steps are necessary to get the
-application up and running.
-
-Things you may want to cover:
-
-* Ruby version
-
-* System dependencies
-
-* Configuration
-
-* Database creation
-
-* Database initialization
-
-* How to run the test suite
-
-* Services (job queues, cache servers, search engines, etc.)
-
-* Deployment instructions
-
-* ...
+timestacker is an app for managing your use of time, by breaking your goals down into 20 minute blocks and letting you complete what you feel like.
