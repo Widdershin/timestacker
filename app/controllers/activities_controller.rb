@@ -1,5 +1,5 @@
 class ActivitiesController < ApplicationController
   def index
-    render json: Activity.all
+    render json: current_user.activities
   end
 end
