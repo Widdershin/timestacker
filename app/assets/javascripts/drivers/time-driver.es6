@@ -5,9 +5,11 @@ import xs from 'xstream';
 export default function timeDriver () {
   const animation$ = xs.create();
 
-  let previousTime = now();
+  let previousTime = new Date().getTime();
 
-  function tick (timestamp) {
+  function tick () {
+    let timestamp = new Date().getTime();
+
     animation$.shamefullySendNext({
       timestamp,
       delta: timestamp - previousTime
