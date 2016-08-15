@@ -25,18 +25,24 @@
 }
 
 .blocks {
-  display: flex;
+  display: inline-block;
   background: grey;
   padding: 6px;
   width: 95%;
+  position: relative;
+  height: 2.5em;
 }
 
 .block {
+  display: inline-block;
+
   width: 2.5em;
   height: 2.5em;
 
   margin-right: 0.5em;
   background: rebeccapurple;
+
+  transition: transform 0.3s ease-in-out;
 }
 
 .queue {
@@ -44,7 +50,7 @@
   background: lightgrey;
   bottom: 0;
   width: 100vw;
-  height: 8vh;
+  height: 3.5em;
 
   display: flex;
   align-items: center;
@@ -52,7 +58,8 @@
 
 .queue-blocks {
   flex-grow: 5;
-  padding: 0em 0.5em;
+  margin: 0;
+  padding: 0;
 }
 
 .go {
@@ -62,5 +69,5 @@
   font-size: larger;
   border: 1px solid #888;
   margin: 0.2em;
-  height: 90%;
+  padding: 0.5em 0em;
 }

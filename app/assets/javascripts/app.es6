@@ -4,13 +4,15 @@ import {makeHTTPDriver} from '@cycle/http';
 import xs from 'xstream';
 import _ from 'lodash';
 
+const BLOCK_WIDTH = 45;
+
 function debug (v) {
   return pre(JSON.stringify(v, null, 2));
 }
 
-function renderBlock (color) {
+function renderBlock (block, index) {
   return (
-    div('.block', {style: {background: color}})
+    div('.block', {hero: {id: block.key}, style: {background: block.activity.color}})
   );
 }
 
@@ -18,7 +20,7 @@ function renderActivity (activity) {
   return (
     div('.activity', {attrs: {'data-id': activity.id}}, [
       h2('.name', activity.name),
-      div('.blocks', _.range(activity.time_blocks_per_week).map(_ => renderBlock(activity.color)))
+      div('.blocks', activity.blocks.map(renderBlock))
     ])
   );
 }
@@ -32,7 +34,7 @@ function view ({activities, queue}) {
       div('.queue', [
         div('.queue-blocks', [
           div('.blocks',
-            queue.map(activity => renderBlock(activity.color))
+            queue.map(renderBlock)
           )
         ]),
 
@@ -48,7 +50,7 @@ function updateActivities (newActivities) {
   newActivities.forEach(activity => {
     activity.blocks = _.range(activity.time_blocks_per_week).map(i => {
       return {
-        key: activity + i,
+        key: activity.name + i,
         activity,
         timeRemaining: 20 * 60 * 1000
       };
@@ -64,10 +66,27 @@ function queueBlock (activityId) {
   return (state) => {
     const activity = state.activities[activityId];
 
+    if (activity.blocks.length === 0 || state.queue.length === 5) {
+      return state;
+    }
+
+    const queuedBlock = activity.blocks.slice(-1);
+    const remainingBlocks = activity.blocks.slice(0, -1);
+
     return {
       ...state,
 
-      queue: [...state.queue, activity]
+      activities: {
+        ...state.activities,
+
+        [activityId]: {
+          ...activity,
+
+          blocks: remainingBlocks
+        }
+      },
+
+      queue: state.queue.concat(queuedBlock)
     };
   };
 }
@@ -114,7 +133,16 @@ function main ({DOM, HTTP}) {
 }
 
 const drivers = {
-  DOM: makeDOMDriver('.app'),
+  DOM: makeDOMDriver('.app', {
+    modules: [
+      require('snabbdom/modules/class'),
+      require('snabbdom/modules/props'),
+      require('snabbdom/modules/attributes'),
+      require('snabbdom/modules/eventlisteners'),
+      require('snabbdom/modules/style'),
+      require('snabbdom/modules/hero')
+    ]
+  }),
   HTTP: makeHTTPDriver()
 };
 
