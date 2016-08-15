@@ -21,20 +21,21 @@
   display: flex;
   flex-direction: column;
   align-items: center;
+  border-radius: 0.3em;
 }
 
 .blocks {
   display: flex;
   background: grey;
-  padding: 3px;
+  padding: 6px;
   width: 95%;
 }
 
 .block {
-  width: 20px;
-  height: 20px;
+  width: 2.5em;
+  height: 2.5em;
 
-  margin-right: 5px;
+  margin-right: 0.5em;
   background: rebeccapurple;
 }
 
@@ -43,5 +44,23 @@
   background: lightgrey;
   bottom: 0;
   width: 100vw;
-  height: 10vh;
+  height: 8vh;
+
+  display: flex;
+  align-items: center;
+}
+
+.queue-blocks {
+  flex-grow: 5;
+  padding: 0em 0.5em;
+}
+
+.go {
+  background: lightgreen;
+  border: none;
+  width: 4em;
+  font-size: larger;
+  border: 1px solid #888;
+  margin: 0.2em;
+  height: 90%;
 }

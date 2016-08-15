@@ -22,6 +22,7 @@
     "browserify": "^13.0.1",
     "browserify-incremental": "^3.1.1",
     "lodash": "^4.13.1",
-    "xstream": "^5.2.4"
+    "xstream": "^5.2.4",
+    "babel-plugin-transform-object-rest-spread": "^6.8.0"
   }
 }
