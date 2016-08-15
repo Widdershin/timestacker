@@ -12,7 +12,11 @@ function debug (v) {
 
 function renderBlock (block, index) {
   return (
-    div('.block', {hero: {id: block.key}, style: {background: block.activity.color}})
+    div('.block', {
+      hero: {id: block.key},
+      style: {background: block.activity.color},
+      attrs: {'data-activity-id': block.activity.id}
+    })
   );
 }
 
@@ -91,6 +95,37 @@ function queueBlock (activityId) {
   };
 }
 
+function unqueueBlock (blockElement) {
+  const blockIndex = Array
+    .from(blockElement.parentElement.children)
+    .indexOf(blockElement);
+
+  const activityId = blockElement.dataset.activityId;
+
+  return function _unqueueBlock (state) {
+    const newQueue = state.queue.slice();
+    const unqueuedBlock = newQueue.splice(blockIndex, 1);
+
+    const activity = state.activities[activityId];
+
+    return {
+      ...state,
+
+      activities: {
+        ...state.activities,
+
+        [activityId]: {
+          ...activity,
+
+          blocks: activity.blocks.concat(unqueuedBlock)
+        }
+      },
+
+      queue: newQueue
+    };
+  };
+}
+
 function main ({DOM, HTTP}) {
   const activities$ = HTTP
     .select('activities')
@@ -119,9 +154,15 @@ function main ({DOM, HTTP}) {
     .events('mousedown')
     .map(event => queueBlock(event.currentTarget.dataset.id));
 
+  const unqueueBlock$ = DOM
+    .select('.queue .block')
+    .events('mousedown')
+    .map(event => unqueueBlock(event.currentTarget));
+
   const reducer$ = xs.merge(
     queueBlock$,
-    updateActivities$
+    updateActivities$,
+    unqueueBlock$
   );
 
   const state$ = reducer$.fold((state, reducer) => reducer(state), initialState);
