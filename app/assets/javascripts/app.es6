@@ -1,10 +1,14 @@
 import {run} from '@cycle/xstream-run';
 import {makeDOMDriver, div, h1, h2, button, pre} from '@cycle/dom';
 import {makeHTTPDriver} from '@cycle/http';
-import timeDriver from './drivers/time-driver.es6';
 import xs from 'xstream';
+import dropRepeats from 'xstream/extra/dropRepeats';
 import _ from 'lodash';
+
+import timeDriver from './drivers/time-driver.es6';
+
 const BLOCK_WIDTH = 45;
+const CSRF_TOKEN = document.head.querySelector("[name=csrf-token]").content;
 
 function debug (v) {
   return pre(JSON.stringify(v, null, 2));
@@ -133,7 +137,7 @@ function updateActivities (newActivities) {
   const activities = {};
 
   newActivities.forEach(activity => {
-    activity.blocks = _.range(activity.time_blocks_per_week).map(i => {
+    activity.blocks = _.range(activity.remaining_blocks).map(i => {
       return {
         key: activity.name + i,
         activity,
@@ -250,6 +254,8 @@ function countdown (delta) {
 
         queue: [],
 
+        completedBlock: updatedBlock,
+
         playing: false,
         view: 'activities'
       };
@@ -259,9 +265,9 @@ function countdown (delta) {
     return {
       ...state,
 
-      queue: [...remainingBlocks]
+      queue: [...remainingBlocks],
 
-      // TODO: update the server somehow to say we've done a thing
+      completedBlock: updatedBlock
     };
   };
 }
@@ -283,8 +289,8 @@ function backToActivities () {
 
       playing: false,
       view: 'activities'
-    }
-  }
+    };
+  };
 }
 
 function main ({DOM, HTTP, Time}) {
@@ -305,7 +311,8 @@ function main ({DOM, HTTP, Time}) {
     queue: [],
     view: 'activities',
     playing: false,
-    timeRemaining: 0
+    timeRemaining: 0,
+    completedBlock: null
   };
 
   const updateActivities$ = activities$
@@ -352,9 +359,30 @@ function main ({DOM, HTTP, Time}) {
 
   const state$ = reducer$.fold((state, reducer) => reducer(state), initialState);
 
+  const completedBlock$ = state$
+    .map(state => state.completedBlock)
+    .compose(dropRepeats(_.isEqual))
+    .filter(block => !!block)
+    .map(block => {
+      return {
+        url: '/blocks',
+        method: 'POST',
+        send: JSON.stringify({block: {activity_id: block.activity.id, complete: true}}),
+        type: 'Application/JSON',
+        headers: {
+          'X-CSRF-Token': CSRF_TOKEN
+        }
+      };
+    });
+
+  const request$ = xs.merge(
+    completedBlock$,
+    requestActivities$
+  );
+
   return {
     DOM: state$.map(view),
-    HTTP: requestActivities$
+    HTTP: request$
   };
 }
 

@@ -1,4 +1,5 @@
 Rails.application.routes.draw do
+  resources :blocks
   devise_for :users
   root 'interface#index'
   resources :activities
