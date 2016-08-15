@@ -24,7 +24,16 @@ function renderBlock (block, index) {
   return (
     div('.block', {
       hero: {id: block.key},
-      style: {background: block.activity.color},
+      style: {background: block.activity.color, transform: `translateX(${index * BLOCK_WIDTH}px)`},
+      attrs: {'data-activity-id': block.activity.id}
+    })
+  );
+}
+
+function renderActiveBlock (block) {
+  return (
+    div('.block.active', {
+      style: {background: block.activity.color, 'box-shadow': `0px 0px 5px 1px ${block.activity.color}`},
       attrs: {'data-activity-id': block.activity.id}
     })
   );
@@ -33,7 +42,9 @@ function renderBlock (block, index) {
 function renderActivity (activity) {
   return (
     div('.activity', {attrs: {'data-id': activity.id}}, [
-      h2('.name', activity.name),
+      div('.name-container', [
+        div('.activity-name', {hero: {id: activity.name}}, activity.name),
+      ]),
       div('.blocks', activity.blocks.map(renderBlock))
     ])
   );
@@ -47,14 +58,18 @@ const views = {
 function view (state) {
   if (views[state.view] === undefined) {
     throw new Error(`Cannot find a view for "${state.view}".`);
-  };
+  }
 
   return views[state.view](state);
 }
 
+const fadeInOutStyle = {
+  opacity: '0', delayed: {opacity: '1'}, remove: {opacity: '0'}
+};
+
 function activitiesView ({activities, queue, playing}) {
   return (
-    div('.view', [
+    div('.view.activities', {style: fadeInOutStyle}, [
       h1('Activities'),
       div('.activities', _.values(activities).map(renderActivity)),
 
@@ -63,12 +78,21 @@ function activitiesView ({activities, queue, playing}) {
           div('.blocks',
             queue.map(renderBlock)
           )
-        ]),
+        ])
+      ]),
 
-        button('.go', {props: {disabled: queue.length === 0}}, 'Start')
-      ])
+      button('.control.go', {props: {disabled: queue.length === 0}}, 'Start')
     ])
   );
+}
+
+function timeRemaining (queue) {
+  const currentBlock = queue[0];
+
+  return _(queue)
+    .takeWhile(block => block.activity.id === currentBlock.activity.id)
+    .map('timeRemaining')
+    .sum();
 }
 
 function prettyTime (timeInMsec) {
@@ -80,22 +104,27 @@ function prettyTime (timeInMsec) {
 
 function playingView ({activities, queue, playing}) {
   return (
-    div('.view', [
-      h1('.activity-name', queue[0].activity.name),
+    div('.view.playing', {style: fadeInOutStyle}, [
+      div('.activity-name', {hero: {id: queue[0].activity.name}}, queue[0].activity.name),
 
-      h1(`${prettyTime(queue[0].timeRemaining)} left`),
+      h1(`${prettyTime(timeRemaining(queue))} left`),
 
       renderFullscreenBlock(queue[0]),
 
       div('.queue', [
         div('.queue-blocks', [
           div('.blocks',
-            queue.slice(1).map(renderBlock)
+            renderActiveBlock(queue[0]),
+            queue.map((block, index) => index === 0 ? renderActiveBlock(block) : renderBlock(block, index))
           )
-        ]),
+        ])
+      ]),
 
-        button('.pause', 'Pause')
-      ])
+      button('.control.back', 'Back'),
+
+      playing ?
+        button('.control.pause', 'Pause') :
+        button('.control.go', 'Play')
     ])
   );
 }
@@ -108,7 +137,7 @@ function updateActivities (newActivities) {
       return {
         key: activity.name + i,
         activity,
-        timeRemaining: 0.1 * 60 * 1000
+        timeRemaining: 20 * 60 * 1000
       };
     });
 
@@ -122,7 +151,7 @@ function queueBlock (activityId) {
   return (state) => {
     const activity = state.activities[activityId];
 
-    if (activity.blocks.length === 0 || state.queue.length === 5) {
+    if (activity.blocks.length === 0 || state.queue.length === 6) {
       return state;
     }
 
@@ -155,6 +184,10 @@ function unqueueBlock (blockElement) {
   const activityId = blockElement.dataset.activityId;
 
   return function _unqueueBlock (state) {
+    if (state.view !== 'activities') {
+      return state;
+    }
+
     const newQueue = state.queue.slice();
     const unqueuedBlock = newQueue.splice(blockIndex, 1);
 
@@ -233,6 +266,27 @@ function countdown (delta) {
   };
 }
 
+function pause () {
+  return function _pause (state) {
+    return {
+      ...state,
+
+      playing: false
+    };
+  };
+}
+
+function backToActivities () {
+  return function _backToActivities (state) {
+    return {
+      ...state,
+
+      playing: false,
+      view: 'activities'
+    }
+  }
+}
+
 function main ({DOM, HTTP, Time}) {
   const activities$ = HTTP
     .select('activities')
@@ -272,6 +326,16 @@ function main ({DOM, HTTP, Time}) {
     .events('click')
     .map(go);
 
+  const pause$ = DOM
+    .select('.pause')
+    .events('click')
+    .map(pause);
+
+  const backToActivities$ = DOM
+    .select('.back')
+    .events('click')
+    .map(backToActivities);
+
   const countdown$ = Time
     .map(({delta}) => delta)
     .map(delta => countdown(delta));
@@ -281,7 +345,9 @@ function main ({DOM, HTTP, Time}) {
     updateActivities$,
     unqueueBlock$,
     go$,
-    countdown$
+    pause$,
+    countdown$,
+    backToActivities$
   );
 
   const state$ = reducer$.fold((state, reducer) => reducer(state), initialState);

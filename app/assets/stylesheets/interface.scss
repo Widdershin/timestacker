@@ -6,18 +6,32 @@
   display: flex;
   flex-direction: column;
   align-items: center;
+  transition: opacity 0.5s ease-in-out;
+  width: 100vw;
+  height: 90vh;
+  position: fixed;
+  top: 0;
 }
 
 .activities {
   display: flex;
   flex-direction: column;
-  width: 90vw;
+  width: 100vw;
+  z-index: 0;
+}
+
+.playing {
+  justify-content: center;
+}
+
+.playing * {
+  z-index: 10;
 }
 
 .activity {
   background: lightgray;
   padding: 0.8em;
-  margin-bottom: 1em;
+  margin: 1em;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -25,16 +39,15 @@
 }
 
 .blocks {
-  display: inline-block;
   background: grey;
   padding: 6px;
-  width: 95%;
+  width: 100%;
   position: relative;
   height: 2.5em;
 }
 
 .block {
-  display: inline-block;
+  position: absolute;
 
   width: 2.5em;
   height: 2.5em;
@@ -42,24 +55,26 @@
   margin-right: 0.5em;
   background: rebeccapurple;
 
-  transition: all 0.3s ease-in-out;
+  transition: transform 0.4s, scale 0.4s, opacity 0.4s;
+  transition-timing-function: ease-in-out;
 }
 
 .fullscreen {
-  position: absolute;
+  position: fixed;
   left: 0;
   top: 0;
   width: 100vw;
   height: 100vh;
-  z-index: -1;
+  z-index: 5;
 }
 
 .queue {
   position: fixed;
   background: lightgrey;
+  left: 0;
   bottom: 0;
   width: 100vw;
-  height: 3.5em;
+  height: 3.3em;
 
   display: flex;
   align-items: center;
@@ -80,6 +95,14 @@ button {
   padding: 0.5em 0em;
 }
 
+.control {
+  position: fixed;
+
+  right: 1em;
+  bottom: 3.3em;
+  z-index: 30;
+}
+
 .go {
   background: lightgreen;
 }
@@ -88,6 +111,23 @@ button {
   background: lightyellow;
 }
 
+.back {
+  background: lightblue;
+  left: 1em;
+}
+
+.name-container {
+  height: 3.6em;
+}
+
 .activity-name {
-  z-index: 1;
+  font-size: 1.8em;
+  font-style: bold;
+  margin: 0.3em;
+
+  transition: transform 0.3s ease-in-out;
+}
+
+.playing .activity-name {
+  font-size: 2.5em;
 }
