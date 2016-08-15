@@ -1,13 +1,23 @@
 import {run} from '@cycle/xstream-run';
 import {makeDOMDriver, div, h1, h2, button, pre} from '@cycle/dom';
 import {makeHTTPDriver} from '@cycle/http';
+import timeDriver from './drivers/time-driver.es6';
 import xs from 'xstream';
 import _ from 'lodash';
-
 const BLOCK_WIDTH = 45;
 
 function debug (v) {
   return pre(JSON.stringify(v, null, 2));
+}
+
+function renderFullscreenBlock (block) {
+  return (
+    div('.block.fullscreen', {
+      hero: {id: block.key},
+      style: {background: block.activity.color},
+      attrs: {'data-activity-id': block.activity.id}
+    })
+  );
 }
 
 function renderBlock (block, index) {
@@ -29,7 +39,15 @@ function renderActivity (activity) {
   );
 }
 
-function view ({activities, queue}) {
+function view (state) {
+  if (!state.playing) {
+    return activitiesView(state);
+  } else {
+    return playingView(state);
+  }
+}
+
+function activitiesView ({activities, queue, playing}) {
   return (
     div('.view', [
       h1('Activities'),
@@ -42,7 +60,36 @@ function view ({activities, queue}) {
           )
         ]),
 
-        button('.go', 'Go')
+        button('.go', {props: {disabled: queue.length === 0}}, 'Start')
+      ])
+    ])
+  );
+}
+
+function prettyTime (timeInMsec) {
+  const minutes = Math.floor(timeInMsec / 60 / 1000);
+  const seconds = Math.floor(((timeInMsec / 60 / 1000) - minutes) * 60);
+
+  return `${_.padStart(minutes, 2, '0')}:${_.padStart(seconds, 2, '0')}`;
+}
+
+function playingView ({activities, queue, playing}) {
+  return (
+    div('.view', [
+      h1('.activity-name', queue[0].activity.name),
+
+      h1(`${prettyTime(queue[0].timeRemaining)} left`),
+
+      renderFullscreenBlock(queue[0]),
+
+      div('.queue', [
+        div('.queue-blocks', [
+          div('.blocks',
+            queue.slice(1).map(renderBlock)
+          )
+        ]),
+
+        button('.pause', 'Pause')
       ])
     ])
   );
@@ -56,7 +103,7 @@ function updateActivities (newActivities) {
       return {
         key: activity.name + i,
         activity,
-        timeRemaining: 20 * 60 * 1000
+        timeRemaining: 0.1 * 60 * 1000
       };
     });
 
@@ -126,7 +173,59 @@ function unqueueBlock (blockElement) {
   };
 }
 
-function main ({DOM, HTTP}) {
+function go () {
+  return function _go (state) {
+    return {
+      ...state,
+
+      playing: true
+    };
+  };
+}
+
+function countdown (delta) {
+  return function _countdown (state) {
+    if (!state.playing) {
+      return state;
+    }
+
+    const [currentBlock, ...remainingBlocks] = state.queue;
+
+    const updatedBlock = {
+      ...currentBlock,
+
+      timeRemaining: currentBlock.timeRemaining - delta
+    };
+
+    if (updatedBlock.timeRemaining > 0) {
+      return {
+        ...state,
+
+        queue: [updatedBlock, ...remainingBlocks]
+      };
+    }
+
+    if (remainingBlocks.length === 0) {
+      return {
+        ...state,
+
+        queue: [],
+
+        playing: false
+      }
+    }
+
+    return {
+      ...state,
+
+      queue: [...remainingBlocks],
+
+      // TODO: update the server somehow to say we've done a thing
+    };
+  };
+}
+
+function main ({DOM, HTTP, Time}) {
   const activities$ = HTTP
     .select('activities')
     .flatten()
@@ -159,10 +258,21 @@ function main ({DOM, HTTP}) {
     .events('mousedown')
     .map(event => unqueueBlock(event.currentTarget));
 
+  const go$ = DOM
+    .select('.go')
+    .events('click')
+    .map(go);
+
+  const countdown$ = Time
+    .map(({delta}) => delta)
+    .map(delta => countdown(delta));
+
   const reducer$ = xs.merge(
     queueBlock$,
     updateActivities$,
-    unqueueBlock$
+    unqueueBlock$,
+    go$,
+    countdown$
   );
 
   const state$ = reducer$.fold((state, reducer) => reducer(state), initialState);
@@ -184,7 +294,8 @@ const drivers = {
       require('snabbdom/modules/hero')
     ]
   }),
-  HTTP: makeHTTPDriver()
+  HTTP: makeHTTPDriver(),
+  Time: timeDriver
 };
 
 export default function () {

@@ -42,7 +42,16 @@
   margin-right: 0.5em;
   background: rebeccapurple;
 
-  transition: transform 0.3s ease-in-out;
+  transition: all 0.3s ease-in-out;
+}
+
+.fullscreen {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100vw;
+  height: 100vh;
+  z-index: -1;
 }
 
 .queue {
@@ -62,12 +71,23 @@
   padding: 0;
 }
 
-.go {
-  background: lightgreen;
+button {
   border: none;
   width: 4em;
   font-size: larger;
   border: 1px solid #888;
   margin: 0.2em;
   padding: 0.5em 0em;
+}
+
+.go {
+  background: lightgreen;
+}
+
+.pause {
+  background: lightyellow;
+}
+
+.activity-name {
+  z-index: 1;
 }

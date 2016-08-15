@@ -23,6 +23,9 @@
     "browserify": "^13.0.1",
     "browserify-incremental": "^3.1.1",
     "lodash": "^4.13.1",
+    "moment": "^2.14.1",
+    "performance-now": "^0.2.0",
+    "raf": "^3.2.0",
     "snabbdom": "^0.5.0",
     "xstream": "^5.2.4"
   }
