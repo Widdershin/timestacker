@@ -39,12 +39,17 @@ function renderActivity (activity) {
   );
 }
 
+const views = {
+  'activities': activitiesView,
+  'timer': playingView
+};
+
 function view (state) {
-  if (!state.playing) {
-    return activitiesView(state);
-  } else {
-    return playingView(state);
-  }
+  if (views[state.view] === undefined) {
+    throw new Error(`Cannot find a view for "${state.view}".`);
+  };
+
+  return views[state.view](state);
 }
 
 function activitiesView ({activities, queue, playing}) {
@@ -178,6 +183,7 @@ function go () {
     return {
       ...state,
 
+      view: 'timer',
       playing: true
     };
   };
@@ -185,7 +191,7 @@ function go () {
 
 function countdown (delta) {
   return function _countdown (state) {
-    if (!state.playing) {
+    if (!state.playing || state.view !== 'timer') {
       return state;
     }
 
@@ -211,14 +217,16 @@ function countdown (delta) {
 
         queue: [],
 
-        playing: false
-      }
+        playing: false,
+        view: 'activities'
+      };
     }
 
+    // Implicitly, we are removing the block and there are remainingBlocks
     return {
       ...state,
 
-      queue: [...remainingBlocks],
+      queue: [...remainingBlocks]
 
       // TODO: update the server somehow to say we've done a thing
     };
@@ -241,6 +249,7 @@ function main ({DOM, HTTP, Time}) {
   const initialState = {
     activities: [],
     queue: [],
+    view: 'activities',
     playing: false,
     timeRemaining: 0
   };
