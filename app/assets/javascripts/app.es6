@@ -56,7 +56,7 @@ function renderActivity (activity) {
 
 const views = {
   'activities': activitiesView,
-  'timer': playingView
+  'timer': timerView
 };
 
 function view (state) {
@@ -106,7 +106,7 @@ function prettyTime (timeInMsec) {
   return `${_.padStart(minutes, 2, '0')}:${_.padStart(seconds, 2, '0')}`;
 }
 
-function playingView ({activities, queue, playing}) {
+function timerView ({activities, queue, playing}) {
   return (
     div('.view.playing', {style: fadeInOutStyle}, [
       div('.activity-name', {hero: {id: queue[0].activity.name}}, queue[0].activity.name),
