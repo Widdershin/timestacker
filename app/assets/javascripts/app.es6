@@ -124,11 +124,15 @@ function timerView ({activities, queue, playing}) {
         ])
       ]),
 
-      button('.control.back', 'Back'),
+      div('.controls', [
+        button('.back', 'Back'),
 
-      playing ?
-        button('.control.pause', 'Pause') :
-        button('.control.go', 'Play')
+        button('.complete', 'Complete'),
+
+        playing ?
+          button('.pause', 'Pause') :
+          button('.go', 'Play')
+      ])
     ])
   );
 }
@@ -293,6 +297,34 @@ function backToActivities () {
   };
 }
 
+function completeBlock () {
+  return function _completeBlock (state) {
+    const [currentBlock, ...remainingBlocks] = state.queue;
+
+    if (remainingBlocks.length === 0) {
+      return {
+        ...state,
+
+        view: 'activities',
+
+        playing: false,
+
+        queue: [...remainingBlocks],
+
+        completedBlock: currentBlock
+      };
+    }
+
+    return {
+      ...state,
+
+      queue: [...remainingBlocks],
+
+      completedBlock: currentBlock
+    };
+  };
+}
+
 function main ({DOM, HTTP, Time}) {
   const activities$ = HTTP
     .select('activities')
@@ -343,6 +375,11 @@ function main ({DOM, HTTP, Time}) {
     .events('click')
     .map(backToActivities);
 
+  const complete$ = DOM
+    .select('.complete')
+    .events('click')
+    .map(completeBlock);
+
   const countdown$ = Time
     .map(({delta}) => delta)
     .map(delta => countdown(delta));
@@ -354,7 +391,8 @@ function main ({DOM, HTTP, Time}) {
     go$,
     pause$,
     countdown$,
-    backToActivities$
+    backToActivities$,
+    complete$
   );
 
   const state$ = reducer$.fold((state, reducer) => reducer(state), initialState);

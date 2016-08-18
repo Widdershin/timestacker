@@ -98,6 +98,16 @@ button {
   padding: 0.5em 0em;
 }
 
+.controls {
+  position: fixed;
+  left: 0;
+  bottom: 3.3em;
+  width: 100vw;
+  z-index: 30;
+  display: flex;
+  justify-content: space-between;
+}
+
 .control {
   position: fixed;
 
@@ -112,6 +122,11 @@ button {
 
 .pause {
   background: lightyellow;
+}
+
+.complete {
+  background: pink;
+  width: 6em;
 }
 
 .back {
