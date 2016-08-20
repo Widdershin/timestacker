@@ -27,6 +27,7 @@ function renderFullscreenBlock (block) {
 function renderBlock (block, index) {
   return (
     div('.block', {
+      key: block.key,
       hero: {id: block.key},
       style: {background: block.activity.color, transform: `translateX(${index * BLOCK_WIDTH}px)`},
       attrs: {'data-activity-id': block.activity.id}
@@ -47,7 +48,7 @@ function renderActivity (activity) {
   return (
     div('.activity', {attrs: {'data-id': activity.id}}, [
       div('.name-container', [
-        div('.activity-name', {hero: {id: activity.name}}, activity.name),
+        div('.activity-name', activity.name),
       ]),
       div('.blocks', activity.blocks.map(renderBlock))
     ])
@@ -109,7 +110,7 @@ function prettyTime (timeInMsec) {
 function timerView ({activities, queue, playing}) {
   return (
     div('.view.playing', {style: fadeInOutStyle}, [
-      div('.activity-name', {hero: {id: queue[0].activity.name}}, queue[0].activity.name),
+      div('.activity-name', queue[0].activity.name),
 
       h1(`${prettyTime(timeRemaining(queue))} left`),
 
