@@ -1,5 +1,5 @@
 import {run} from '@cycle/xstream-run';
-import {makeDOMDriver, div, h1, h2, button, pre} from '@cycle/dom';
+import {makeDOMDriver, div, h1, h2, button, pre, input} from '@cycle/dom';
 import {makeHTTPDriver} from '@cycle/http';
 import xs from 'xstream';
 import dropRepeats from 'xstream/extra/dropRepeats';
@@ -9,6 +9,14 @@ import timeDriver from './drivers/time-driver.es6';
 
 const BLOCK_WIDTH = 45;
 const CSRF_TOKEN = document.head.querySelector("[name=csrf-token]").content;
+
+function Block (activity, i) {
+  return {
+    key: activity.name + i,
+    activity,
+    timeRemaining: 20 * 60 * 1000
+  };
+}
 
 function debug (v) {
   return pre(JSON.stringify(v, null, 2));
@@ -29,7 +37,15 @@ function renderBlock (block, index) {
     div('.block', {
       key: block.key,
       hero: {id: block.key},
-      style: {background: block.activity.color, transform: `translateX(${index * BLOCK_WIDTH}px)`},
+      style: {
+        background: block.activity.color,
+        transform: `translateX(${index * BLOCK_WIDTH}px)`,
+        opacity: 1,
+        remove: {
+          transform: `translateX(${index * BLOCK_WIDTH}px) scale(0)`,
+          opacity: 0
+        }
+      },
       attrs: {'data-activity-id': block.activity.id}
     })
   );
@@ -38,7 +54,7 @@ function renderBlock (block, index) {
 function renderActiveBlock (block) {
   return (
     div('.block.active', {
-      style: {background: block.activity.color, 'box-shadow': `0px 0px 5px 1px ${block.activity.color}`},
+      style: {background: block.activity.color, 'box-shadow': `0px 0px 5px 1px ${block.activity.color}`, transform: 'scale(1)'},
       attrs: {'data-activity-id': block.activity.id}
     })
   );
@@ -48,9 +64,43 @@ function renderActivity (activity) {
   return (
     div('.activity', {attrs: {'data-id': activity.id}}, [
       div('.name-container', [
-        div('.activity-name', activity.name),
+        div('.activity-name', activity.name)
       ]),
       div('.blocks', activity.blocks.map(renderBlock))
+    ])
+  );
+}
+
+function scrollToElement (element) {
+  const elementY = element.getBoundingClientRect().top;
+
+  const positionToScrollTo = window.scrollY + elementY;
+
+  window.scrollTo(0, positionToScrollTo);
+}
+
+const newActivityHooks = {
+  insert: (vNode) => scrollToElement(vNode.elm)
+};
+
+function renderNewActivity (activity) {
+  return (
+    div('.activity.new', {hook: newActivityHooks, attrs: {'data-id': activity.id}}, [
+      div('.name-container', [
+        input('.name', {props: {value: activity.name}}),
+
+        button('.save-activity', 'Done')
+      ]),
+
+      div('.blocks-container', [
+        button('.less-blocks', '-'),
+
+        div('.blocks', activity.blocks.map(renderBlock)),
+
+        button('.more-blocks', '+'),
+
+        input('.color', {attrs: {type: 'color'}})
+      ])
     ])
   );
 }
@@ -72,11 +122,17 @@ const fadeInOutStyle = {
   opacity: '0', delayed: {opacity: '1'}, remove: {opacity: '0'}
 };
 
-function activitiesView ({activities, queue, playing}) {
+function activitiesView ({activities, queue, playing, newActivity}) {
+  const activitiesToDisplay = _.values(activities);
+
   return (
     div('.view.activities', {style: fadeInOutStyle}, [
       h1('Activities'),
-      div('.activities', _.values(activities).map(renderActivity)),
+
+      div('.activities', [
+        ...activitiesToDisplay.map(renderActivity),
+        ..._.compact([newActivity]).map(renderNewActivity)
+      ]),
 
       div('.queue', [
         div('.queue-blocks', [
@@ -85,6 +141,8 @@ function activitiesView ({activities, queue, playing}) {
           )
         ])
       ]),
+
+      button('.control.new-activity', 'New Activity'),
 
       button('.control.go', {props: {disabled: queue.length === 0}}, 'Start')
     ])
@@ -120,7 +178,10 @@ function timerView ({activities, queue, playing}) {
         div('.queue-blocks', [
           div('.blocks',
             renderActiveBlock(queue[0]),
-            queue.map((block, index) => index === 0 ? renderActiveBlock(block) : renderBlock(block, index))
+            queue.map((block, index) =>
+              index === 0
+                ? renderActiveBlock(block)
+                : renderBlock(block, index))
           )
         ])
       ]),
@@ -142,13 +203,9 @@ function updateActivities (newActivities) {
   const activities = {};
 
   newActivities.forEach(activity => {
-    activity.blocks = _.range(activity.remaining_blocks).map(i => {
-      return {
-        key: activity.name + i,
-        activity,
-        timeRemaining: 20 * 60 * 1000
-      };
-    });
+    activity.blocks = _
+      .range(activity.remaining_blocks)
+      .map(i => Block(activity, i));
 
     activities[activity.id] = activity;
   });
@@ -156,8 +213,114 @@ function updateActivities (newActivities) {
   return (state) => ({...state, activities});
 }
 
+function newActivity (DOM) {
+  const newActivity = {
+    blocks: [],
+    name: '',
+    color: ''
+  };
+
+  newActivity.blocks.push(Block(newActivity, 0));
+
+  return (state) => {
+    return {
+      ...state,
+
+      newActivity
+    };
+  };
+}
+
+function updateNewActivityColor (color) {
+  return (state) => {
+    const newActivity = {
+      ...state.newActivity,
+
+      color
+    };
+
+    newActivity.blocks = newActivity.blocks.map(block => ({...block, activity: newActivity}));
+
+    return {
+      ...state,
+
+      newActivity
+    };
+  };
+}
+
+function updateNewActivityName (name) {
+  return (state) => {
+    const newActivity = {
+      ...state.newActivity,
+
+      name
+    };
+
+    newActivity.blocks = newActivity.blocks.map(block => ({...block, activity: newActivity}));
+
+    return {
+      ...state,
+
+      newActivity
+    };
+  };
+}
+
+function addNewActivityBlock () {
+  return state => {
+    return {
+      ...state,
+
+      newActivity: {
+        ...state.newActivity,
+
+        blocks: [...state.newActivity.blocks, Block(state.newActivity, state.newActivity.blocks.length)]
+      }
+    };
+  };
+}
+
+function removeNewActivityBlock () {
+  return state => {
+    return {
+      ...state,
+
+      newActivity: {
+        ...state.newActivity,
+
+        blocks: state.newActivity.blocks.slice(1)
+      }
+    };
+  };
+}
+
+function persistActivity (activity) {
+  return (state) => {
+    const activities = state.activities;
+
+    activity.blocks = _
+      .range(activity.remaining_blocks)
+      .map(i => Block(activity, i));
+
+    activities[activity.id] = activity;
+
+    return {
+      ...state,
+
+      activities,
+
+      newActivity: null
+    };
+  };
+}
+
 function queueBlock (activityId) {
   return (state) => {
+    if (!activityId) {
+      return state;
+    }
+
     const activity = state.activities[activityId];
 
     if (activity.blocks.length === 0 || state.queue.length === 6) {
@@ -326,6 +489,25 @@ function completeBlock () {
   };
 }
 
+function saveNewActivityRequest (activity) {
+  const activityData = {
+    name: activity.name,
+    color: activity.color,
+    time_blocks_per_week: activity.blocks.length
+  };
+
+  return {
+    url: '/activities',
+    method: 'POST',
+    send: JSON.stringify({activity: activityData}),
+    type: 'Application/JSON',
+    category: 'create-activity',
+    headers: {
+      'X-CSRF-Token': CSRF_TOKEN
+    }
+  };
+}
+
 function main ({DOM, HTTP, Time}) {
   const activities$ = HTTP
     .select('activities')
@@ -340,6 +522,7 @@ function main ({DOM, HTTP, Time}) {
     });
 
   const initialState = {
+    newActivity: null,
     activities: [],
     queue: [],
     view: 'activities',
@@ -350,6 +533,40 @@ function main ({DOM, HTTP, Time}) {
 
   const updateActivities$ = activities$
     .map(updateActivities);
+
+  const newActivity$ = DOM
+    .select('.new-activity')
+    .events('click')
+    .map(newActivity);
+
+  const updateNewActivityColor$ = DOM
+    .select('.activity.new input.color')
+    .events('input')
+    .map(event => updateNewActivityColor(event.target.value));
+
+  const updateNewActivityName$ = DOM
+    .select('.activity.new input.name')
+    .events('change')
+    .map(event => updateNewActivityName(event.target.value));
+
+  const addNewActivityBlock$ = DOM
+    .select('.activity.new .more-blocks')
+    .events('click')
+    .map(addNewActivityBlock);
+
+  const removeNewActivityBlock$ = DOM
+    .select('.activity.new .less-blocks')
+    .events('click')
+    .map(removeNewActivityBlock);
+
+  const saveNewActivity$ = DOM
+    .select('.save-activity')
+    .events('click');
+
+  const newActivityPersisted$ = HTTP
+    .select('create-activity')
+    .flatten()
+    .map(response => persistActivity(response.body));
 
   const queueBlock$ = DOM
     .select('.activity')
@@ -393,10 +610,21 @@ function main ({DOM, HTTP, Time}) {
     pause$,
     countdown$,
     backToActivities$,
-    complete$
+    complete$,
+    newActivity$,
+    updateNewActivityColor$,
+    updateNewActivityName$,
+    addNewActivityBlock$,
+    removeNewActivityBlock$,
+    newActivityPersisted$
   );
 
   const state$ = reducer$.fold((state, reducer) => reducer(state), initialState);
+
+  const newActivityForRequest$ = state$.map(state => state.newActivity);
+  const saveNewActivityRequest$ = newActivityForRequest$
+    .map(newActivity => saveNewActivity$.map(() => saveNewActivityRequest(newActivity)))
+    .flatten();
 
   const completedBlock$ = state$
     .map(state => state.completedBlock)
@@ -416,7 +644,8 @@ function main ({DOM, HTTP, Time}) {
 
   const request$ = xs.merge(
     completedBlock$,
-    requestActivities$
+    requestActivities$,
+    saveNewActivityRequest$
   );
 
   return {

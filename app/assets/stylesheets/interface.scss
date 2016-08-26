@@ -116,6 +116,30 @@ button {
   z-index: 30;
 }
 
+.new-activity {
+  background: orange;
+  left: 1em;
+  width: 8em;
+}
+
+.activity.new {
+
+  input.name {
+    font-size: 1.8em;
+    width: 80%;
+  }
+
+  .blocks-container {
+    display: flex;
+    width: 100%;
+  }
+
+  input.color {
+    width: 4em;
+    height: 4em;
+  }
+}
+
 .go {
   background: lightgreen;
 }
@@ -136,12 +160,14 @@ button {
 
 .name-container {
   height: 3.6em;
+  display: flex;
 }
 
 .activity-name {
   font-size: 1.8em;
   font-style: bold;
   margin: 0.3em;
+  height: 1em;
 
   transition: transform 0.3s ease-in-out;
 }
