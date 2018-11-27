@@ -23,3 +23,7 @@ html, body {
 h1, h2 {
   margin-top: 3px;
 }
+
+h2 {
+  margin: 0;
+}

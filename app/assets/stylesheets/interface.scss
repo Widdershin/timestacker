@@ -2,6 +2,11 @@
 // They will automatically be included in application.css.
 // You can use Sass (SCSS) here: http://sass-lang.com/
 
+.app {
+  display: flex;
+  justify-content: center;
+}
+
 .view {
   display: flex;
   flex-direction: column;
@@ -17,6 +22,7 @@
   display: flex;
   flex-direction: column;
   width: 100vw;
+  max-width: 1000px;
   z-index: 0;
   height: auto;
   position: relative;
@@ -33,10 +39,9 @@
 
 .activity {
   background: lightgray;
-  padding: 0.8em;
+  padding: 1em;
   margin: 1em;
   display: flex;
-  flex-direction: column;
   align-items: center;
   border-radius: 0.3em;
 }
@@ -47,17 +52,15 @@
   width: 100%;
   position: relative;
   height: 2.5em;
+  overflow: hidden;
+  display: flex;
 }
 
 .block {
-  position: absolute;
-
   width: 2.5em;
   height: 2.5em;
-
   margin-right: 0.5em;
   background: rebeccapurple;
-
   transition: all 0.4s;
   transition-timing-function: ease-in-out;
 }
@@ -78,7 +81,6 @@
   bottom: 0;
   width: 100vw;
   height: 3.3em;
-
   display: flex;
   align-items: center;
 }
@@ -110,7 +112,6 @@ button {
 
 .control {
   position: fixed;
-
   right: 1em;
   bottom: 3.3em;
   z-index: 30;
@@ -123,10 +124,10 @@ button {
 }
 
 .activity.new {
-
   input.name {
-    font-size: 1.8em;
-    width: 80%;
+    flex-grow: 2;
+    color: black;
+    -webkit-text-stroke: none;
   }
 
   .blocks-container {
@@ -135,8 +136,8 @@ button {
   }
 
   input.color {
-    width: 4em;
-    height: 4em;
+    height: 100%;
+    margin: 0em 0.5em;
   }
 }
 
@@ -158,18 +159,19 @@ button {
   left: 1em;
 }
 
-.name-container {
-  height: 3.6em;
-  display: flex;
-}
-
 .activity-name {
   font-size: 1.8em;
   font-style: bold;
   margin: 0.3em;
   height: 1em;
-
   transition: transform 0.3s ease-in-out;
+}
+
+.activity .name {
+  color: white;
+  -webkit-text-stroke: 1px black;
+  font-weight: bold;
+  font-size: 3em;
 }
 
 .playing .activity-name {

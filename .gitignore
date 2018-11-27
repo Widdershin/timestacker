@@ -17,3 +17,5 @@
 .byebug_history
 
 node_modules/
+
+elm/elm-stuff

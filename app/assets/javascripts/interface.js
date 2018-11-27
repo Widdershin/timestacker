@@ -1,6 +1,6 @@
 /* globals $ */
 
 $(function () {
-  require('./app.es6').default();
+  require('./app.ts').default();
 });
 

@@ -1,2 +1,8 @@
-<div class="app"></div>
+<%= javascript_include_tag "bundle" %>
+<div id="wrapper"></div>
 
+<script type="text/javascript">
+  var div = document.getElementById('wrapper');
+  var flags = {csrfToken: "<%= form_authenticity_token %>"}
+  Elm.Main.init({node: div, flags: flags});
+</script>

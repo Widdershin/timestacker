@@ -20,7 +20,7 @@ export default function timeDriver () {
     requestAnimationFrame(tick);
   }
 
-  tick(previousTime);
+  tick();
 
   return animation$;
 }
