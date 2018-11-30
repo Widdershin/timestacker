@@ -10,6 +10,20 @@ import Json.Encode as Encode
 import RemoteData exposing (RemoteData(..), WebData)
 
 
+find : (a -> Bool) -> List a -> Maybe a
+find cond list =
+    case list of
+        x :: xs ->
+            if cond x then
+                Just x
+
+            else
+                find cond xs
+
+        _ ->
+            Nothing
+
+
 type alias Model =
     { flags : Flags
     , activities : WebData (List Activity)
@@ -24,9 +38,13 @@ type Screen
 
 type ActivitiesMode
     = Passive
-    | Creating ActivityEditState
-    | Saving ActivityEditState (WebData Activity)
-    | Editing
+    | Editing EditingIdentity ActivityEditState
+    | Saving EditingIdentity ActivityEditState (WebData Activity)
+
+
+type EditingIdentity
+    = Existing ActivityId
+    | New
 
 
 type alias Flags =
@@ -63,11 +81,19 @@ type Msg
     = NoOp
     | UpdateActivities (WebData (List Activity))
     | NewActivity
-    | ChangeNewActivityColor String
-    | ChangeNewActivityName String
-    | SaveNewActivity
-    | DiscardNewActivity
+    | EditActivity ActivityId
+    | ChangeActivityColor String
+    | ChangeActivityName String
+    | StopEditing
+    | SaveEditingActivity
     | UpdateSavingActivity (WebData Activity)
+
+
+editStateFromActivity : Activity -> ActivityEditState
+editStateFromActivity activity =
+    { name = activity.name
+    , color = activity.color
+    }
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
@@ -86,66 +112,149 @@ update msg model =
                     , color = "#663399"
                     }
             in
-            ( { model | screen = Activities (Creating activityEditState) }, Cmd.none )
+            ( { model
+                | screen = Activities (Editing New activityEditState)
+              }
+            , Cmd.none
+            )
 
-        ChangeNewActivityName name ->
+        EditActivity id ->
+            let
+                existingActivity =
+                    RemoteData.map
+                        (find (\a -> a.id == id))
+                        model.activities
+
+                editState =
+                    RemoteData.map
+                        (Maybe.map editStateFromActivity)
+                        existingActivity
+            in
+            case editState of
+                Success (Just e) ->
+                    ( { model
+                        | screen = Activities (Editing (Existing id) e)
+                      }
+                    , Cmd.none
+                    )
+
+                _ ->
+                    ( model, Cmd.none )
+
+        ChangeActivityName name ->
             case model.screen of
-                Activities (Creating editState) ->
+                Activities (Editing id editState) ->
                     let
                         newEditState =
                             { editState
                                 | name = name
                             }
                     in
-                    ( { model | screen = Activities (Creating newEditState) }, Cmd.none )
+                    ( { model
+                        | screen = Activities (Editing id newEditState)
+                      }
+                    , Cmd.none
+                    )
 
                 _ ->
                     ( model, Cmd.none )
 
-        ChangeNewActivityColor color ->
+        ChangeActivityColor color ->
             case model.screen of
-                Activities (Creating editState) ->
+                Activities (Editing id editState) ->
                     let
                         newEditState =
                             { editState
                                 | color = color
                             }
                     in
-                    ( { model | screen = Activities (Creating newEditState) }, Cmd.none )
-
-                _ ->
-                    ( model, Cmd.none )
-
-        SaveNewActivity ->
-            case model.screen of
-                Activities (Creating editState) ->
-                    ( { model | screen = Activities (Saving editState NotAsked) }
-                    , newActivityRequest model.flags.csrfToken editState |> RemoteData.sendRequest |> Cmd.map UpdateSavingActivity
+                    ( { model
+                        | screen = Activities (Editing id newEditState)
+                      }
+                    , Cmd.none
                     )
 
                 _ ->
                     ( model, Cmd.none )
 
-        DiscardNewActivity ->
+        SaveEditingActivity ->
             case model.screen of
-                Activities (Creating editState) ->
-                    ( { model | screen = Activities Passive }, Cmd.none )
+                Activities (Editing New editState) ->
+                    ( { model
+                        | screen = Activities (Saving New editState Loading)
+                      }
+                    , newActivityRequest model.flags.csrfToken editState
+                        |> RemoteData.sendRequest
+                        |> Cmd.map UpdateSavingActivity
+                    )
+
+                Activities (Editing (Existing id) editState) ->
+                    ( { model
+                        | screen =
+                            Activities (Saving (Existing id) editState Loading)
+                      }
+                    , updateActivityRequest model.flags.csrfToken id editState
+                        |> RemoteData.sendRequest
+                        |> Cmd.map UpdateSavingActivity
+                    )
 
                 _ ->
                     ( model, Cmd.none )
+
+        StopEditing ->
+            ( { model | screen = Activities Passive }, Cmd.none )
 
         UpdateSavingActivity remoteActivity ->
             case model.screen of
-                Activities (Saving editState _) ->
+                Activities (Saving editIdentity editState _) ->
                     case ( remoteActivity, model.activities ) of
                         ( Success savedActivity, Success activities ) ->
-                            ( { model | screen = Activities Passive, activities = Success (activities ++ [ savedActivity ]) }, Cmd.none )
+                            ( { model
+                                | screen = Activities Passive
+                                , activities =
+                                    Success
+                                        (updateActivities
+                                            editIdentity
+                                            savedActivity
+                                            activities
+                                        )
+                              }
+                            , Cmd.none
+                            )
 
                         _ ->
-                            ( { model | screen = Activities (Saving editState remoteActivity) }, Cmd.none )
+                            ( { model
+                                | screen =
+                                    Activities
+                                        (Saving
+                                            editIdentity
+                                            editState
+                                            remoteActivity
+                                        )
+                              }
+                            , Cmd.none
+                            )
 
                 _ ->
                     ( model, Cmd.none )
+
+
+updateActivities : EditingIdentity -> Activity -> List Activity -> List Activity
+updateActivities editIdentity updatedActivity activities =
+    case editIdentity of
+        New ->
+            activities ++ [ updatedActivity ]
+
+        Existing id ->
+            List.map
+                (\a ->
+                    if a.id == id then
+                        updatedActivity
+
+                    else
+                        a
+                )
+                activities
 
 
 activitiesRequest : String -> Http.Request (List Activity)
@@ -173,6 +282,26 @@ newActivityRequest token editState =
             , Http.header "Accept" "application/json"
             ]
         , url = "/activities"
+        , body = Http.jsonBody (encodeActivity editState)
+        , expect = Http.expectJson decodeActivity
+        , timeout = Nothing
+        , withCredentials = False
+        }
+
+
+updateActivityRequest :
+    String
+    -> ActivityId
+    -> ActivityEditState
+    -> Http.Request Activity
+updateActivityRequest token id editState =
+    Http.request
+        { method = "PUT"
+        , headers =
+            [ Http.header "X-CSRF-Token" token
+            , Http.header "Accept" "application/json"
+            ]
+        , url = "/activities/" ++ id
         , body = Http.jsonBody (encodeActivity editState)
         , expect = Http.expectJson decodeActivity
         , timeout = Nothing
@@ -230,40 +359,80 @@ view model =
                 let
                     newActivity =
                         case activityState of
-                            Creating new ->
+                            Editing New new ->
                                 Just (renderEditActivity new)
 
-                            Saving new remoteStatus ->
+                            Saving New new remoteStatus ->
                                 Just (renderSavingActivity new remoteStatus)
+
+                            _ ->
+                                Nothing
+
+                    editingId =
+                        case activityState of
+                            Editing (Existing id) state ->
+                                Just ( Existing id, state )
 
                             _ ->
                                 Nothing
                 in
                 [ h1 [] [ text "Activities" ]
-                , renderActivities model.activities newActivity
+                , renderActivities model.activities activityState
                 , renderQueue
-                , button [ class "control new-activity", onClick NewActivity ] [ text "New Activity" ]
-                , button [ class "control go" ] [ text "Start" ]
+                , button
+                    [ class "control new-activity"
+                    , onClick NewActivity
+                    ]
+                    [ text "New Activity" ]
+                , button
+                    [ class "control go"
+                    ]
+                    [ text "Start" ]
                 ]
 
             Timer ->
                 [ h1 [] [ text "Timer" ]
-                , renderActivities model.activities Nothing
+                , renderActivities model.activities Passive
                 , renderQueue
                 , renderControls
                 ]
 
 
-renderActivities : WebData (List Activity) -> Maybe (Html Msg) -> Html Msg
-renderActivities remoteActivities newActivity =
+renderActivities :
+    WebData (List Activity)
+    -> ActivitiesMode
+    -> Html Msg
+renderActivities remoteActivities activitiesMode =
     let
-        possibleNewActivity =
-            case newActivity of
-                Just editState ->
-                    [ editState ]
+        newActivity =
+            case activitiesMode of
+                Editing New new ->
+                    [ renderEditActivity new ]
 
-                Nothing ->
+                Saving New new remoteStatus ->
+                    [ renderSavingActivity new remoteStatus ]
+
+                _ ->
                     []
+
+        renderActivity activity =
+            case activitiesMode of
+                Editing (Existing id) state ->
+                    if id == activity.id then
+                        renderEditActivity state
+
+                    else
+                        activityCard activity
+
+                Saving (Existing id) state remoteStatus ->
+                    if id == activity.id then
+                        renderSavingActivity state remoteStatus
+
+                    else
+                        activityCard activity
+
+                _ ->
+                    activityCard activity
     in
     case remoteActivities of
         NotAsked ->
@@ -273,7 +442,7 @@ renderActivities remoteActivities newActivity =
             text "Loading activities..."
 
         Success activities ->
-            div [ class "activities" ] (List.map activityCard activities ++ possibleNewActivity)
+            div [ class "activities" ] (List.map renderActivity activities ++ newActivity)
 
         Failure _ ->
             text "Error"
@@ -301,17 +470,50 @@ renderBlock =
 
 activityCard : Activity -> Html Msg
 activityCard activity =
-    div [ class "activity", style "background" (Debug.log "color" activity.color) ]
-        [ h2 [ class "name" ] [ text activity.name ] ]
+    div
+        [ class "activity"
+        , style "background" activity.color
+        ]
+        [ h2
+            [ class "name" ]
+            [ text activity.name ]
+        , button
+            [ class "edit"
+            , onClick (EditActivity activity.id)
+            ]
+            [ text "Edit" ]
+        ]
 
 
 renderEditActivity : ActivityEditState -> Html Msg
 renderEditActivity activity =
-    div [ class "activity new", style "background-color" activity.color ]
-        [ input [ class "name", onInput ChangeNewActivityName ] [ text activity.name ]
-        , input [ class "color", attribute "type" "color", attribute "value" activity.color, onInput ChangeNewActivityColor ] []
-        , button [ class "save-activity", onClick SaveNewActivity ] [ text "Done" ]
-        , button [ class "save-activity", onClick DiscardNewActivity ] [ text "Cancel" ]
+    div
+        [ class "activity new"
+        , style "background-color" activity.color
+        ]
+        [ input
+            [ class "name"
+            , onInput ChangeActivityName
+            , attribute "value" activity.name
+            ]
+            []
+        , input
+            [ class "color"
+            , attribute "type" "color"
+            , attribute "value" activity.color
+            , onInput ChangeActivityColor
+            ]
+            []
+        , button
+            [ class "save-activity"
+            , onClick SaveEditingActivity
+            ]
+            [ text "Done" ]
+        , button
+            [ class "save-activity"
+            , onClick StopEditing
+            ]
+            [ text "Cancel" ]
         ]
 
 

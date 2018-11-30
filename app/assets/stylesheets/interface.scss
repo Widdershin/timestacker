@@ -14,7 +14,7 @@
   transition: opacity 0.4s ease-in-out;
   width: 100vw;
   height: 90vh;
-  position: fixed;
+  overflow-x: hidden;
   top: 0;
 }
 
@@ -44,6 +44,7 @@
   display: flex;
   align-items: center;
   border-radius: 0.3em;
+  justify-content: space-between;
 }
 
 .blocks {
@@ -128,6 +129,7 @@ button {
     flex-grow: 2;
     color: black;
     -webkit-text-stroke: none;
+    min-width: 100px;
   }
 
   .blocks-container {
