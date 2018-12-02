@@ -40,6 +40,7 @@ type ActivitiesMode
     = Passive
     | Editing EditingIdentity ActivityEditState
     | Saving EditingIdentity ActivityEditState (WebData Activity)
+    | Archiving ActivityId (WebData Activity)
 
 
 type EditingIdentity
@@ -87,6 +88,8 @@ type Msg
     | StopEditing
     | SaveEditingActivity
     | UpdateSavingActivity (WebData Activity)
+    | ArchiveActivity ActivityId
+    | UpdateArchivingActivity (WebData Activity)
 
 
 editStateFromActivity : Activity -> ActivityEditState
@@ -238,6 +241,28 @@ update msg model =
                 _ ->
                     ( model, Cmd.none )
 
+        ArchiveActivity id ->
+            let
+                cmd =
+                    archiveActivityRequest model.flags.csrfToken id
+                        |> RemoteData.sendRequest
+                        |> Cmd.map UpdateArchivingActivity
+            in
+            ( { model | screen = Activities (Archiving id Loading) }, cmd )
+
+        UpdateArchivingActivity remoteActivity ->
+            case ( remoteActivity, model.activities ) of
+                ( Success archivedActivity, Success activities ) ->
+                    ( { model
+                        | screen = Activities Passive
+                        , activities = Success (List.filter (\a -> a.id /= archivedActivity.id) activities)
+                      }
+                    , Cmd.none
+                    )
+
+                _ ->
+                    ( model, Cmd.none )
+
 
 updateActivities : EditingIdentity -> Activity -> List Activity -> List Activity
 updateActivities editIdentity updatedActivity activities =
@@ -309,6 +334,25 @@ updateActivityRequest token id editState =
         }
 
 
+archiveActivityRequest :
+    String
+    -> ActivityId
+    -> Http.Request Activity
+archiveActivityRequest token id =
+    Http.request
+        { method = "DELETE"
+        , headers =
+            [ Http.header "X-CSRF-Token" token
+            , Http.header "Accept" "application/json"
+            ]
+        , url = "/activities/" ++ id
+        , body = Http.emptyBody
+        , expect = Http.expectJson decodeActivity
+        , timeout = Nothing
+        , withCredentials = False
+        }
+
+
 decodeActivity : Decoder Activity
 decodeActivity =
     let
@@ -356,26 +400,6 @@ view model =
     div [ id "wrapper", class "view" ] <|
         case model.screen of
             Activities activityState ->
-                let
-                    newActivity =
-                        case activityState of
-                            Editing New new ->
-                                Just (renderEditActivity new)
-
-                            Saving New new remoteStatus ->
-                                Just (renderSavingActivity new remoteStatus)
-
-                            _ ->
-                                Nothing
-
-                    editingId =
-                        case activityState of
-                            Editing (Existing id) state ->
-                                Just ( Existing id, state )
-
-                            _ ->
-                                Nothing
-                in
                 [ h1 [] [ text "Activities" ]
                 , renderActivities model.activities activityState
                 , renderQueue
@@ -407,7 +431,7 @@ renderActivities remoteActivities activitiesMode =
         newActivity =
             case activitiesMode of
                 Editing New new ->
-                    [ renderEditActivity new ]
+                    [ renderEditActivity Nothing new ]
 
                 Saving New new remoteStatus ->
                     [ renderSavingActivity new remoteStatus ]
@@ -419,7 +443,7 @@ renderActivities remoteActivities activitiesMode =
             case activitiesMode of
                 Editing (Existing id) state ->
                     if id == activity.id then
-                        renderEditActivity state
+                        renderEditActivity (Just id) state
 
                     else
                         activityCard activity
@@ -485,36 +509,52 @@ activityCard activity =
         ]
 
 
-renderEditActivity : ActivityEditState -> Html Msg
-renderEditActivity activity =
+renderEditActivity : Maybe ActivityId -> ActivityEditState -> Html Msg
+renderEditActivity activityId activity =
+    let
+        archiveButton =
+            case activityId of
+                Just id ->
+                    [ button
+                        [ class "archive"
+                        , onClick (ArchiveActivity id)
+                        ]
+                        [ text "Archive" ]
+                    ]
+
+                Nothing ->
+                    []
+    in
     div
         [ class "activity new"
         , style "background-color" activity.color
         ]
-        [ input
+        ([ input
             [ class "name"
             , onInput ChangeActivityName
             , attribute "value" activity.name
             ]
             []
-        , input
+         , input
             [ class "color"
             , attribute "type" "color"
             , attribute "value" activity.color
             , onInput ChangeActivityColor
             ]
             []
-        , button
+         , button
             [ class "save-activity"
             , onClick SaveEditingActivity
             ]
             [ text "Done" ]
-        , button
-            [ class "save-activity"
+         , button
+            [ class "stop-editing"
             , onClick StopEditing
             ]
             [ text "Cancel" ]
-        ]
+         ]
+            ++ archiveButton
+        )
 
 
 renderSavingActivity : ActivityEditState -> WebData Activity -> Html Msg
