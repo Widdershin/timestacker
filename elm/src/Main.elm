@@ -24,10 +24,27 @@ find cond list =
             Nothing
 
 
+removeAt : Int -> List a -> List a
+removeAt index list =
+    case ( compare index 0, list ) of
+        ( _, [] ) ->
+            []
+
+        ( LT, _ ) ->
+            list
+
+        ( EQ, x :: xs ) ->
+            xs
+
+        ( GT, x :: xs ) ->
+            x :: removeAt (index - 1) xs
+
+
 type alias Model =
     { flags : Flags
     , activities : WebData (List Activity)
     , screen : Screen
+    , queue : List ActivityId
     }
 
 
@@ -52,9 +69,17 @@ type alias Flags =
     { csrfToken : String }
 
 
+type alias Block =
+    { color : String, label : String }
+
+
 init : Flags -> ( Model, Cmd Msg )
 init flags =
-    ( { flags = flags, activities = NotAsked, screen = Activities Passive }
+    ( { flags = flags
+      , activities = NotAsked
+      , screen = Activities Passive
+      , queue = []
+      }
     , activitiesRequest flags.csrfToken
         |> RemoteData.sendRequest
         |> Cmd.map UpdateActivities
@@ -78,6 +103,10 @@ type alias Activity =
     }
 
 
+type alias QueueIndex =
+    Int
+
+
 type Msg
     = NoOp
     | UpdateActivities (WebData (List Activity))
@@ -90,6 +119,8 @@ type Msg
     | UpdateSavingActivity (WebData Activity)
     | ArchiveActivity ActivityId
     | UpdateArchivingActivity (WebData Activity)
+    | QueueActivity ActivityId
+    | RemoveQueueBlock QueueIndex
 
 
 editStateFromActivity : Activity -> ActivityEditState
@@ -263,6 +294,12 @@ update msg model =
                 _ ->
                     ( model, Cmd.none )
 
+        QueueActivity activityId ->
+            ( { model | queue = model.queue ++ [ activityId ] }, Cmd.none )
+
+        RemoveQueueBlock index ->
+            ( { model | queue = removeAt index model.queue }, Cmd.none )
+
 
 updateActivities : EditingIdentity -> Activity -> List Activity -> List Activity
 updateActivities editIdentity updatedActivity activities =
@@ -395,6 +432,26 @@ maybeToDecoder error maybe =
             Decode.fail error
 
 
+makeColorFinder : WebData (List Activity) -> ActivityId -> Maybe Block
+makeColorFinder remoteActivities id =
+    case remoteActivities of
+        Success activities ->
+            find (\a -> a.id == id) activities
+                |> Maybe.map
+                    (\a ->
+                        { color = a.color
+                        , label =
+                            Maybe.withDefault "?" <|
+                                Maybe.map String.fromChar <|
+                                    List.head <|
+                                        String.toList a.name
+                        }
+                    )
+
+        _ ->
+            Nothing
+
+
 view : Model -> Html Msg
 view model =
     div [ id "wrapper", class "view" ] <|
@@ -402,7 +459,7 @@ view model =
             Activities activityState ->
                 [ h1 [] [ text "Activities" ]
                 , renderActivities model.activities activityState
-                , renderQueue
+                , renderQueue model.queue (makeColorFinder model.activities)
                 , button
                     [ class "control new-activity"
                     , onClick NewActivity
@@ -417,7 +474,7 @@ view model =
             Timer ->
                 [ h1 [] [ text "Timer" ]
                 , renderActivities model.activities Passive
-                , renderQueue
+                , renderQueue model.queue (makeColorFinder model.activities)
                 , renderControls
                 ]
 
@@ -472,11 +529,24 @@ renderActivities remoteActivities activitiesMode =
             text "Error"
 
 
-renderQueue : Html Msg
-renderQueue =
+renderQueue : List ActivityId -> (ActivityId -> Maybe Block) -> Html Msg
+renderQueue queue activityColor =
+    let
+        renderBlock index activityId =
+            let
+                blockDetails =
+                    Maybe.withDefault { color = "black", label = "?" } (activityColor activityId)
+            in
+            div
+                [ class "block"
+                , style "background-color" blockDetails.color
+                , onClick (RemoveQueueBlock index)
+                ]
+                [ text blockDetails.label ]
+    in
     div [ class "queue" ]
         [ div [ class "queue-blocks" ]
-            [ div [ class "blocks" ] []
+            [ div [ class "blocks" ] (List.indexedMap renderBlock queue)
             ]
         ]
 
@@ -487,16 +557,12 @@ renderControls =
         [ button [ class "control go" ] [ text "Start" ] ]
 
 
-renderBlock : Html Msg
-renderBlock =
-    div [ class "block" ] []
-
-
 activityCard : Activity -> Html Msg
 activityCard activity =
     div
-        [ class "activity"
+        [ class "activity clickable"
         , style "background" activity.color
+        , onClick (QueueActivity activity.id)
         ]
         [ h2
             [ class "name" ]
@@ -515,46 +581,52 @@ renderEditActivity activityId activity =
         archiveButton =
             case activityId of
                 Just id ->
-                    [ button
+                    button
                         [ class "archive"
                         , onClick (ArchiveActivity id)
                         ]
                         [ text "Archive" ]
-                    ]
 
                 Nothing ->
-                    []
+                    text ""
     in
     div
         [ class "activity new"
         , style "background-color" activity.color
         ]
-        ([ input
-            [ class "name"
-            , onInput ChangeActivityName
-            , attribute "value" activity.name
+        [ div [ class "edit-row" ]
+            [ input
+                [ class "name"
+                , onInput ChangeActivityName
+                , attribute "value" activity.name
+                ]
+                []
             ]
-            []
-         , input
-            [ class "color"
-            , attribute "type" "color"
-            , attribute "value" activity.color
-            , onInput ChangeActivityColor
+        , div [ class "edit-row" ]
+            [ div [ class "row-part" ]
+                [ input
+                    [ class "color"
+                    , attribute "type" "color"
+                    , attribute "value" activity.color
+                    , onInput ChangeActivityColor
+                    ]
+                    []
+                , archiveButton
+                ]
+            , div [ class "row-part right" ]
+                [ button
+                    [ class "stop-editing"
+                    , onClick StopEditing
+                    ]
+                    [ text "Cancel" ]
+                , button
+                    [ class "save-activity"
+                    , onClick SaveEditingActivity
+                    ]
+                    [ text "Done" ]
+                ]
             ]
-            []
-         , button
-            [ class "save-activity"
-            , onClick SaveEditingActivity
-            ]
-            [ text "Done" ]
-         , button
-            [ class "stop-editing"
-            , onClick StopEditing
-            ]
-            [ text "Cancel" ]
-         ]
-            ++ archiveButton
-        )
+        ]
 
 
 renderSavingActivity : ActivityEditState -> WebData Activity -> Html Msg
