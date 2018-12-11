@@ -121,6 +121,7 @@ type Msg
     | UpdateArchivingActivity (WebData Activity)
     | QueueActivity ActivityId
     | RemoveQueueBlock QueueIndex
+    | StartTimer
 
 
 editStateFromActivity : Activity -> ActivityEditState
@@ -287,6 +288,7 @@ update msg model =
                     ( { model
                         | screen = Activities Passive
                         , activities = Success (List.filter (\a -> a.id /= archivedActivity.id) activities)
+                        , queue = List.filter (\id -> id /= archivedActivity.id) model.queue
                       }
                     , Cmd.none
                     )
@@ -299,6 +301,9 @@ update msg model =
 
         RemoveQueueBlock index ->
             ( { model | queue = removeAt index model.queue }, Cmd.none )
+
+        StartTimer ->
+            ( { model | screen = Timer }, Cmd.none )
 
 
 updateActivities : EditingIdentity -> Activity -> List Activity -> List Activity
@@ -467,13 +472,14 @@ view model =
                     [ text "New Activity" ]
                 , button
                     [ class "control go"
+                    , onClick StartTimer
                     ]
                     [ text "Start" ]
                 ]
 
             Timer ->
                 [ h1 [] [ text "Timer" ]
-                , renderActivities model.activities Passive
+                , renderTimer model.queue
                 , renderQueue model.queue (makeColorFinder model.activities)
                 , renderControls
                 ]
@@ -529,6 +535,11 @@ renderActivities remoteActivities activitiesMode =
             text "Error"
 
 
+renderTimer : List ActivityId -> Html Msg
+renderTimer queue =
+    div [] []
+
+
 renderQueue : List ActivityId -> (ActivityId -> Maybe Block) -> Html Msg
 renderQueue queue activityColor =
     let
@@ -554,7 +565,7 @@ renderQueue queue activityColor =
 renderControls : Html Msg
 renderControls =
     div [ class "controls" ]
-        [ button [ class "control go" ] [ text "Start" ] ]
+        [ button [ class "control go", onClick StartTimer ] [ text "Start" ] ]
 
 
 activityCard : Activity -> Html Msg
