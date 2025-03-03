@@ -1,13 +1,16 @@
 module Main exposing (Activity, Model, Msg(..), activityCard, init, main, update, view)
 
 import Browser
-import Html exposing (Html, button, div, h1, h2, img, input, p, text)
+import Browser.Events exposing (onAnimationFrameDelta)
+import Html exposing (Html, button, div, h1, h2, img, input, p, text, textarea)
 import Html.Attributes exposing (attribute, class, id, src, style)
-import Html.Events exposing (onClick, onInput)
+import Html.Events exposing (onClick, onInput, preventDefaultOn)
 import Http
 import Json.Decode as Decode exposing (Decoder)
 import Json.Encode as Encode
 import RemoteData exposing (RemoteData(..), WebData)
+import String exposing (padLeft)
+import Time
 
 
 find : (a -> Bool) -> List a -> Maybe a
@@ -39,19 +42,27 @@ removeAt index list =
         ( GT, x :: xs ) ->
             x :: removeAt (index - 1) xs
 
+type alias QueueItem =
+    { id : ActivityId
+    , remainingTime : Float
+    }
 
 type alias Model =
     { flags : Flags
     , activities : WebData (List Activity)
     , screen : Screen
-    , queue : List ActivityId
+    , queue : List QueueItem
     }
 
 
 type Screen
     = Activities ActivitiesMode
-    | Timer
+    | Timer TimerState
 
+
+type TimerState
+  = Running
+  | Paused
 
 type ActivitiesMode
     = Passive
@@ -70,7 +81,7 @@ type alias Flags =
 
 
 type alias Block =
-    { color : String, label : String }
+  { color : String, label : String, name : String }
 
 
 init : Flags -> ( Model, Cmd Msg )
@@ -122,6 +133,10 @@ type Msg
     | QueueActivity ActivityId
     | RemoveQueueBlock QueueIndex
     | StartTimer
+    | PauseTimer
+    | UpdateTimer Float
+    | ChangeScreen Screen
+    | CompleteActivity
 
 
 editStateFromActivity : Activity -> ActivityEditState
@@ -288,7 +303,7 @@ update msg model =
                     ( { model
                         | screen = Activities Passive
                         , activities = Success (List.filter (\a -> a.id /= archivedActivity.id) activities)
-                        , queue = List.filter (\id -> id /= archivedActivity.id) model.queue
+                        , queue = List.filter (\i -> i.id /= archivedActivity.id) model.queue
                       }
                     , Cmd.none
                     )
@@ -297,13 +312,48 @@ update msg model =
                     ( model, Cmd.none )
 
         QueueActivity activityId ->
-            ( { model | queue = model.queue ++ [ activityId ] }, Cmd.none )
+            ( { model | queue = model.queue ++ [ makeQueueItem activityId (makeColorFinder model.activities) ] }, Cmd.none )
 
         RemoveQueueBlock index ->
             ( { model | queue = removeAt index model.queue }, Cmd.none )
 
         StartTimer ->
-            ( { model | screen = Timer }, Cmd.none )
+          ( { model | screen = Timer Running }, Cmd.none )
+
+        PauseTimer ->
+          ( { model | screen = Timer Paused }, Cmd.none )
+
+        ChangeScreen screen ->
+          ( { model | screen = screen }, Cmd.none )
+
+        CompleteActivity ->
+          let
+            updatedQueue =
+              case model.queue of
+                (_::xs) -> xs
+                _ -> model.queue
+          in
+            ( { model | queue = updatedQueue}, Cmd.none )
+
+        UpdateTimer delta ->
+          let
+            updatedQueue =
+              case (model.screen, model.queue) of
+                (Timer Running, x::xs) -> { x | remainingTime = x.remainingTime - delta } :: xs
+                _ -> model.queue
+          in
+            ( { model | queue = updatedQueue}, Cmd.none )
+
+
+makeQueueItem : ActivityId -> (ActivityId -> Maybe Block) -> QueueItem
+makeQueueItem id getBlock =
+  case getBlock id of
+    Just block ->
+      if block.name == "Break"
+      then { id = id, remainingTime = 5 * 60 * 1000 }
+      else { id = id, remainingTime = 20 * 60 * 1000 }
+    _ ->
+      { id = id, remainingTime = 20 * 60 * 1000 }
 
 
 updateActivities : EditingIdentity -> Activity -> List Activity -> List Activity
@@ -450,6 +500,7 @@ makeColorFinder remoteActivities id =
                                 Maybe.map String.fromChar <|
                                     List.head <|
                                         String.toList a.name
+                        , name = a.name
                         }
                     )
 
@@ -477,11 +528,17 @@ view model =
                     [ text "Start" ]
                 ]
 
-            Timer ->
+            Timer _ ->
                 [ h1 [] [ text "Timer" ]
-                , renderTimer model.queue
+                , renderTimer model.queue (makeColorFinder model.activities)
                 , renderQueue model.queue (makeColorFinder model.activities)
-                , renderControls
+                , textarea [] []
+                , button
+                    [ class "control back"
+                    , onClick (ChangeScreen (Activities Passive))
+                    ]
+                    [ text "Back" ]
+                , renderControls model.screen
                 ]
 
 
@@ -535,18 +592,43 @@ renderActivities remoteActivities activitiesMode =
             text "Error"
 
 
-renderTimer : List ActivityId -> Html Msg
-renderTimer queue =
-    div [] []
+renderTimer : List QueueItem -> (ActivityId -> Maybe Block) -> Html Msg
+renderTimer queue blockForActivity =
+    let
+        currentItem =
+            List.head queue
+        currentActivity : Maybe (Block, QueueItem)
+        currentActivity =
+          Maybe.andThen (\item -> Maybe.map (\x -> (x, item)) (blockForActivity item.id)) currentItem
+
+        renderTime : Float -> Html Msg
+        renderTime remaining =
+          let seconds = floor (remaining / 1000) |> modBy 60
+              minutes = floor (remaining / (1000 * 60)) |> modBy 60
+              showTime t = padLeft 2 '0' (String.fromInt t)
+          in div [] [text ("Time remaining: " ++ showTime minutes ++ ":" ++ showTime seconds)]
+    in
+    case currentActivity of
+        Just (block, item) ->
+            div [ class "timer" ]
+                [ h2 [] [ text block.name ]
+                , renderTime item.remainingTime
+                ]
+
+        Nothing ->
+            div [ class "timer" ]
+                [ text "All items completed!"
+                ]
 
 
-renderQueue : List ActivityId -> (ActivityId -> Maybe Block) -> Html Msg
+renderQueue : List QueueItem -> (ActivityId -> Maybe Block) -> Html Msg
 renderQueue queue activityColor =
     let
-        renderBlock index activityId =
+        renderBlock : Int -> QueueItem -> Html Msg
+        renderBlock index queueItem =
             let
                 blockDetails =
-                    Maybe.withDefault { color = "black", label = "?" } (activityColor activityId)
+                    Maybe.withDefault { color = "black", label = "?", name = "" } (activityColor queueItem.id)
             in
             div
                 [ class "block"
@@ -562,10 +644,22 @@ renderQueue queue activityColor =
         ]
 
 
-renderControls : Html Msg
-renderControls =
-    div [ class "controls" ]
-        [ button [ class "control go", onClick StartTimer ] [ text "Start" ] ]
+renderControls : Screen -> Html Msg
+renderControls screen =
+    let
+        completeButton = button [ class "control complete", onClick CompleteActivity ] [ text "Complete" ]
+        controls =
+            case screen of
+                Activities _ ->
+                    [ button [ class "control go", onClick StartTimer ] [ text "Start" ] ]
+
+                Timer Paused ->
+                    [ completeButton, button [ class "control go", onClick StartTimer ] [ text "Resume" ] ]
+
+                Timer Running ->
+                      [ completeButton, button [ class "control pause", onClick PauseTimer ] [ text "Pause" ] ]
+    in
+    div [ class "controls" ] controls
 
 
 activityCard : Activity -> Html Msg
@@ -580,11 +674,16 @@ activityCard activity =
             [ text activity.name ]
         , button
             [ class "edit"
-            , onClick (EditActivity activity.id)
+            , stopPropagationOnClick (EditActivity activity.id)
             ]
             [ text "Edit" ]
         ]
 
+stopPropagationOnClick msg =
+  let
+    options = { message = msg, stopPropagation = True, preventDefault = False }
+  in
+    Html.Events.custom "click" (Decode.map (always options) (Decode.succeed msg))
 
 renderEditActivity : Maybe ActivityId -> ActivityEditState -> Html Msg
 renderEditActivity activityId activity =
@@ -654,5 +753,10 @@ main =
         { view = view
         , init = init
         , update = update
-        , subscriptions = always Sub.none
+        , subscriptions = subs
         }
+
+
+subs : Model -> Sub.Sub Msg
+subs =
+    always (onAnimationFrameDelta UpdateTimer)
